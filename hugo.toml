@@ -1,0 +1,110 @@
+baseURL = "https://ashish1099.me/"
+languageCode = "en-us"
+title = "Ashish Jaiswal"
+theme = "PaperMod"
+[pagination]
+  pagerSize = 10
+
+enableRobotsTXT = true
+buildDrafts = false
+buildFuture = false
+buildExpired = false
+
+[outputs]
+  home = ["HTML", "RSS", "JSON"]
+
+[minify]
+  disableXML = true
+  minifyOutput = true
+
+[params]
+  env = "production"
+  description = "Tech blog by Ashish Jaiswal — software development, system design, critical thinking, AI, and personal projects."
+  keywords = ["blog", "software", "system design", "AI", "devops", "kubernetes", "solana"]
+  author = "Ashish Jaiswal"
+  defaultTheme = "auto"
+  disableThemeToggle = false
+  ShowReadingTime = true
+  ShowShareButtons = true
+  ShowPostNavLinks = true
+  ShowBreadCrumbs = true
+  ShowCodeCopyButtons = true
+  ShowWordCount = false
+  ShowRssButtonInSectionTermList = true
+  UseHugoToc = true
+  disableSpecial1stPost = false
+  disableScrollToTop = false
+  hidemeta = false
+  hideSummary = false
+  showtoc = true
+  tocopen = false
+  comments = false
+
+  [params.assets]
+    disableHLJS = true
+
+  [params.homeInfoParams]
+    Title = "Hi, I'm Ashish Jaiswal"
+    Content = "CTO at [Obmondo](https://obmondo.com) — Monitor your server with 29 Euro a month. I write about software development, system design, critical thinking, AI, and things I'm building."
+
+  [[params.socialIcons]]
+    name = "github"
+    url = "https://github.com/ashish1099"
+
+  [[params.socialIcons]]
+    name = "linkedin"
+    url = "https://linkedin.com/in/ashish1099"
+
+  [[params.socialIcons]]
+    name = "email"
+    url = "mailto:ashish@obmondo.com"
+
+  [[params.socialIcons]]
+    name = "rss"
+    url = "index.xml"
+
+  [params.editPost]
+    URL = "https://github.com/ashish1099/blogs/tree/main/content"
+    Text = "Suggest Changes"
+    appendFilePath = true
+
+[params.fuseOpts]
+  isCaseSensitive = false
+  shouldSort = true
+  location = 0
+  distance = 1000
+  threshold = 0.4
+  minMatchCharLength = 0
+  keys = ["title", "permalink", "summary", "content"]
+
+[[menu.main]]
+  identifier = "posts"
+  name = "Posts"
+  url = "/posts/"
+  weight = 10
+
+[[menu.main]]
+  identifier = "archives"
+  name = "Archives"
+  url = "/archives/"
+  weight = 20
+
+[[menu.main]]
+  identifier = "search"
+  name = "Search"
+  url = "/search/"
+  weight = 30
+
+[[menu.main]]
+  identifier = "tags"
+  name = "Tags"
+  url = "/tags/"
+  weight = 40
+
+[markup]
+  [markup.highlight]
+    noClasses = false
+
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
