@@ -48,20 +48,16 @@ buildExpired = false
     Content = "CTO at [Obmondo](https://obmondo.com) — Monitor your server with 29 Euro a month. I write about software development, system design, critical thinking, AI, and things I'm building."
 
   [[params.socialIcons]]
-    name = "github"
-    url = "https://github.com/ashish1099"
-
-  [[params.socialIcons]]
     name = "linkedin"
     url = "https://linkedin.com/in/ashish1099"
 
   [[params.socialIcons]]
-    name = "email"
-    url = "mailto:ashish@obmondo.com"
+    name = "github"
+    url = "https://github.com/ashish1099"
 
   [[params.socialIcons]]
-    name = "rss"
-    url = "index.xml"
+    name = "mastodon"
+    url = "https://mastodon.social/@ashish1099"
 
   [params.editPost]
     URL = "https://github.com/ashish1099/blogs/tree/main/content"
