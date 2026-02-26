@@ -1,4 +1,4 @@
-.PHONY: help serve build new clean submodules
+.PHONY: help serve build new clean submodules docker-serve docker-build
 
 TITLE ?= new-post
 
@@ -9,6 +9,8 @@ help:
 	@echo "  make new TITLE=...  - Create a new post"
 	@echo "  make clean          - Remove build artifacts"
 	@echo "  make submodules     - Init/update git submodules (theme)"
+	@echo "  make docker-serve   - Start Hugo dev server via Docker (no local Hugo needed)"
+	@echo "  make docker-build   - Build site for production via Docker"
 
 serve:
 	hugo server -D
@@ -24,3 +26,9 @@ clean:
 
 submodules:
 	git submodule update --init --recursive
+
+docker-serve:
+	docker compose up
+
+docker-build:
+	docker compose run --rm hugo hugo --gc --minify
