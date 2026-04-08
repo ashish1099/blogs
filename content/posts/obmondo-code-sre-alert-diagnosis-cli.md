@@ -1,7 +1,7 @@
 ---
 title: "Obmondo Code: An AI-Powered SRE Alert Diagnosis CLI"
 date: 2026-04-08T09:00:00+05:30
-draft: true
+draft: false
 tags: ["go", "tui", "llm", "sre", "alerting", "bubbletea", "vllm", "qwen", "kubernetes", "ssh", "devtools"]
 author: "Ashish Jaiswal"
 summary: "A walkthrough of Obmondo Code, an SRE co-pilot CLI built in Go that connects an AI agent to 290+ diagnostic runbooks, SSH command execution, Gitea issue parsing, and time registration — with a strict safety model baked into every layer."

@@ -1,7 +1,7 @@
 ---
 title: "Building a PR Review Bot Under 32K Context: Go AST Diffing, YAML Key Diffing, and Smart Truncation"
 date: 2026-04-08
-draft: true
+draft: false
 tags: ["go", "golang", "llm", "mattermost", "gitea", "ast", "code-review", "vllm", "qwen", "kubernetes"]
 categories: ["development", "ai"]
 author: "Ashish Jaiswal"
