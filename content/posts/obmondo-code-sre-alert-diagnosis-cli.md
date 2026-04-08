@@ -27,7 +27,7 @@ Obmondo Code is an SRE co-pilot CLI built in Go. You paste a Gitea issue URL and
 
 It ships with 290+ diagnostic runbooks covering Linux system alerts and Kubernetes alerts.
 No external API calls, no account creation, no cloud dependency — the LLM endpoint is the
-internal Obmondo vLLM instance at `ai.obmondo.com:8000`.
+internal Obmondo vLLM instance.
 
 ---
 
