@@ -284,3 +284,77 @@ Point it at `http://host-ip:8000` and it picks up the local vLLM endpoint.
 
 The upgrade has genuine improvements — the expanded tool-call parser list and cleaner CLI
 structure are worth it. The migration is straightforward once you know which flags changed.
+
+---
+
+## Bonus experiment: Gemma 4 27B on the same setup
+
+After getting Qwen3-14B-AWQ stable in production, I tested Google's Gemma 4 27B on the same
+RTX 4000 Ada (20GB VRAM) to see how it compared for the artoo use case.
+
+### Does it fit?
+
+Gemma 4 27B in full precision is around 54GB — well beyond 20GB VRAM. The only way to run it
+is with a 4-bit quantized variant. Community AWQ builds exist on Hugging Face, and they bring
+the weight footprint down to approximately 14–15GB, which fits on 20GB with a reduced
+`--max-model-len`.
+
+```yaml
+entrypoint: ["vllm", "serve", "bartowski/google_gemma-4-27b-it-GGUF"]
+command: >
+  --gpu-memory-utilization 0.92
+  --max-model-len 16384
+  --quantization awq_marlin
+  --enable-auto-tool-choice
+  --tool-call-parser functiongemma
+```
+
+Note `--tool-call-parser functiongemma` — Gemma 4's tool call format is different from the
+Hermes/Qwen family. Using `hermes` here produces malformed JSON tool calls.
+
+### Context window comparison
+
+| Model | Max context (full) | Practical on 20GB |
+|---|---|---|
+| Qwen3-14B-AWQ | 40K tokens | ~32K with KV cache headroom |
+| Gemma 4 27B (AWQ 4-bit) | 128K tokens | ~16K before OOM |
+
+This is the core tradeoff. Gemma 4 advertises 128K context but the KV cache is enormous at that
+window size. On 20GB you have to cut it back so far that the theoretical advantage disappears.
+Qwen3-14B-AWQ at 32K is more usable in practice.
+
+### Speed
+
+Qwen3-14B-AWQ generates at roughly 40–50 tok/s on RTX 4000 Ada.
+Gemma 4 27B AWQ generates at roughly 18–22 tok/s on the same hardware.
+
+For artoo's interactive chat use case — where users expect a response in under 3 seconds — the
+Gemma throughput is noticeably sluggish on longer prompts.
+
+### Tool calling quality
+
+Gemma 4 27B produces correct tool call JSON for simple single-tool requests. Where it struggled
+was with the artoo pipeline's pre-processed data: when the context includes several thousand
+tokens of timereg and git log data, Gemma occasionally invoked tools redundantly or ignored
+pre-fetched data and asked for it again via tool calls. Qwen3-14B-AWQ handled the enriched
+context reliably without re-requesting data the Go layer had already appended.
+
+### Why we stayed with Qwen3-14B-AWQ
+
+Three reasons:
+
+1. **Context headroom.** 32K practical context vs ~16K for Gemma 4 27B on this VRAM budget.
+   Artoo regularly sends 10–15K token prompts after enrichment. Gemma hits the limit on
+   complex queries.
+
+2. **Tool-calling discipline.** Qwen3 with `hermes` parser does not double-invoke tools on
+   pre-fetched data. This matters because artoo's design deliberately avoids redundant LLM
+   round-trips (see architecture doc) — a model that re-fetches what Go already provided breaks
+   that contract.
+
+3. **Throughput.** 40–50 tok/s vs 18–22 tok/s is the difference between a snappy response
+   and one that feels slow. On a single-GPU setup with no batching, the smaller model wins.
+
+Gemma 4 27B would be the better choice on a 48GB GPU (H100 80GB or two A100s), where the full
+context window is accessible and throughput is no longer the constraint. On the RTX 4000 Ada
+20GB budget, Qwen3-14B-AWQ is the pragmatic pick.
