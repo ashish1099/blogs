@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+  <defs>
+    <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#475569"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1200" height="600" fill="#ffffff"/>
+  <text x="580" y="36" text-anchor="middle" font-size="22" font-weight="700" fill="#1e293b">Mattermost Team Edition login flow through Keycloak 20+</text>
+
+  <!-- actor headers -->
+  <rect x="108" y="52" width="244" height="60" rx="10" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="230" y="80" text-anchor="middle" font-size="16" font-weight="700" fill="#1e293b">Mattermost TE</text>
+  <text x="230" y="100" text-anchor="middle" font-size="13" fill="#475569">GitLab OAuth provider</text>
+
+  <rect x="600" y="52" width="240" height="60" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+  <text x="720" y="82" text-anchor="middle" font-size="17" font-weight="700" fill="#1e293b">Keycloak 20+</text>
+  <text x="720" y="101" text-anchor="middle" font-size="13" fill="#475569">/auth  /token  /userinfo</text>
+
+  <!-- lifelines -->
+  <line x1="230" y1="112" x2="230" y2="560" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="4 5"/>
+  <line x1="720" y1="112" x2="720" y2="560" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="4 5"/>
+
+  <!-- trigger -->
+  <text x="176" y="140" text-anchor="middle" font-size="13" fill="#64748b">user clicks Login</text>
+  <line x1="96" y1="150" x2="226" y2="150" stroke="#64748b" stroke-width="2" marker-end="url(#ah)"/>
+
+  <!-- 1 authorize -->
+  <text x="475" y="184" text-anchor="middle" font-size="15" fill="#334155">1.  GET /auth  (authorize, no scope parameter)</text>
+  <line x1="232" y1="196" x2="714" y2="196" stroke="#8b5cf6" stroke-width="2" marker-end="url(#ah)"/>
+
+  <!-- 2 code back -->
+  <text x="475" y="238" text-anchor="middle" font-size="15" fill="#334155">2.  back to Mattermost with an authorization code</text>
+  <line x1="708" y1="250" x2="234" y2="250" stroke="#0891b2" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+
+  <!-- 3 token -->
+  <text x="475" y="292" text-anchor="middle" font-size="15" fill="#334155">3.  POST /token  (exchange the code)</text>
+  <line x1="232" y1="304" x2="714" y2="304" stroke="#8b5cf6" stroke-width="2" marker-end="url(#ah)"/>
+
+  <!-- 4 token back (fix 1) -->
+  <text x="475" y="346" text-anchor="middle" font-size="15" fill="#334155">4.  access token, scope claim contains openid</text>
+  <line x1="708" y1="358" x2="234" y2="358" stroke="#0891b2" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+
+  <!-- 5 userinfo -->
+  <text x="475" y="400" text-anchor="middle" font-size="15" fill="#334155">5.  GET /userinfo  (with that token)</text>
+  <line x1="232" y1="412" x2="714" y2="412" stroke="#8b5cf6" stroke-width="2" marker-end="url(#ah)"/>
+
+  <!-- 6 userinfo back (fix 2) -->
+  <text x="475" y="454" text-anchor="middle" font-size="15" fill="#334155">6.  JSON: id, username, login, email, name</text>
+  <line x1="708" y1="466" x2="234" y2="466" stroke="#0891b2" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+
+  <!-- 7 result -->
+  <rect x="104" y="500" width="290" height="44" rx="9" fill="#dcfce7" stroke="#22c55e" stroke-width="2"/>
+  <text x="249" y="527" text-anchor="middle" font-size="14" fill="#166534">7.  id is non-zero, user is logged in</text>
+
+  <!-- fix 1 callout (token step) -->
+  <line x1="856" y1="358" x2="722" y2="358" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <rect x="858" y="322" width="330" height="72" rx="10" fill="#dcfce7" stroke="#22c55e" stroke-width="2"/>
+  <text x="874" y="346" font-size="13" font-weight="700" fill="#166534">Fix 1  (step 4)</text>
+  <text x="874" y="366" font-size="12.5" fill="#166534">A Default client scope named "openid" is</text>
+  <text x="874" y="383" font-size="12.5" fill="#166534">attached, so /userinfo returns 200, not 403.</text>
+
+  <!-- fix 2 callout (userinfo step) -->
+  <line x1="856" y1="466" x2="722" y2="466" stroke="#ea580c" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <rect x="858" y="430" width="330" height="86" rx="10" fill="#ffedd5" stroke="#f97316" stroke-width="2"/>
+  <text x="874" y="454" font-size="13" font-weight="700" fill="#9a3412">Fix 2  (step 6)</text>
+  <text x="874" y="474" font-size="12.5" fill="#9a3412">Five dedicated mappers shape the JSON like</text>
+  <text x="874" y="491" font-size="12.5" fill="#9a3412">GitLab's, with id as a JSON long, so</text>
+  <text x="874" y="508" font-size="12.5" fill="#9a3412">Mattermost can parse it.</text>
+</svg>
