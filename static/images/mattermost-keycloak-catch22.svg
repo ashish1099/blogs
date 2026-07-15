@@ -34,8 +34,8 @@
   <line x1="790" y1="204" x2="790" y2="246" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
 
   <rect x="640" y="250" width="300" height="64" rx="9" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
-  <text x="790" y="278" text-anchor="middle" font-size="16" fill="#1e293b">getSSOProvider() sees</text>
-  <text x="790" y="299" text-anchor="middle" font-size="16" fill="#1e293b">"openid" substring</text>
+  <text x="790" y="278" text-anchor="middle" font-size="16" fill="#1e293b">getSSOProvider() finds</text>
+  <text x="790" y="299" text-anchor="middle" font-size="16" fill="#1e293b">openid in the scope</text>
   <line x1="790" y1="314" x2="790" y2="360" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
 
   <rect x="640" y="364" width="300" height="64" rx="9" fill="#fee2e2" stroke="#ef4444" stroke-width="2"/>
