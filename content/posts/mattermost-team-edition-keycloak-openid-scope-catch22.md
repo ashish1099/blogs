@@ -13,7 +13,7 @@ I pointed a working Mattermost 10 Team Edition at a newer Keycloak 26. Nothing c
 
 So I went looking for the setting that was obviously wrong, and found one: an empty `scope` where both the docs and common sense say `openid` belongs. I set it. Login broke again, this time with a different error pointing at a completely different part of the system: *"Gitlab SSO through OAuth 2.0 not available on this server."*
 
-That second failure is what this post is about. It's a genuine catch-22 between Mattermost Team Edition and Keycloak: two pieces of software, neither one misconfigured, whose defaults happen to be mutually exclusive. The fix only shows up once you stop asking "what value goes in this field" and start asking "whose job is it to put a scope on this token at all?"
+That second failure is what this post is about. It's a genuine catch-22 between Mattermost Team Edition and Keycloak: two pieces of software, neither one misconfigured, whose defaults happen to be mutually exclusive. The fix isn't a smarter value for that setting. There isn't one. It lives on the Keycloak side.
 
 Here is the whole arrangement in one picture, before any code. Mattermost's built-in GitLab provider is aimed at Keycloak, and the two boxes on the right, a client scope named `openid` and a set of protocol mappers, are the entire fix. Everything below is why each piece has to be there.
 
@@ -115,15 +115,17 @@ I wasn't the first to hit this. The same question sits, unanswered, on the [keyc
 
 ---
 
-## The question that actually breaks the deadlock
+## The fix: put openid on the token from Keycloak's side
 
-Every fix so far assumed the scope claim on the token is a direct echo of what Mattermost asked for. That assumption is the trap. Look again at Keycloak's `/userinfo` check:
+You can't win this from Mattermost's config. Leave the scope empty and Keycloak returns a 403; set it to `openid` and Mattermost reroutes. So take Mattermost out of it: leave the setting empty and have Keycloak put `openid` on the token itself.
+
+That works because Keycloak's `/userinfo` check reads the token, not the request:
 
 ```java
 if (!TokenUtil.hasScope(token.getScope(), OAuth2Constants.SCOPE_OPENID)) {
 ```
 
-It reads `token.getScope()`, the claim that ended up on the issued token, not the `scope` parameter the client sent on the authorize request. Those two are related but not the same. Keycloak doesn't build the claim purely from client input; it builds it from the names of the client scopes attached to the client:
+`token.getScope()` is the scope claim on the issued token, and Keycloak builds that claim from the names of the client scopes attached to the client, not from what the client asked for:
 
 ```java
 // DefaultClientSessionContext.getScopeString() (simplified)
@@ -133,34 +135,17 @@ String scopeParam = getClientScopesStream()
         .collect(Collectors.joining(" "));
 ```
 
-The key detail: default client scopes are applied to every token issued to that client, whether or not the authorize request mentioned them. That exists so an admin can guarantee certain claims land on every token without trusting each client to ask for them correctly. Which is exactly the situation here, except we're using it to inject a scope *name* rather than a claim value.
+A **Default** client scope is applied to every token for that client, whether the request asked for it or not. So give the Mattermost client a default scope whose name happens to be `openid`:
 
-So: create a Keycloak client scope literally named `openid`, set its type to **Default** (not Optional), and turn on **Include in token scope**. It needs no mappers. It just has to exist and be attached.
+- Create a client scope named `openid`, type **Default**, with **Include in token scope** turned on. It needs no mappers; it only has to exist.
+- Attach it to the Mattermost client as a default scope.
+- Leave `MM_GITLABSETTINGS_SCOPE` empty.
 
-```
-Client scope "openid"
-  Type:                   Default
-  Protocol:               openid-connect
-  Include in token scope: On
-        │
-        ▼
- attach to the Mattermost client as a Default client scope
-        │
-        ▼
- every token minted for this client carries "openid" in its scope claim
-        │
-        ├──▶ Keycloak: /userinfo sees "openid" in token.getScope() → 200
-        └──▶ Mattermost: MM_GITLABSETTINGS_SCOPE stays unset →
-             getSSOProvider() never sees the substring → stays on the GitLab provider
-```
+Mattermost never sends `openid`, so it stays on the GitLab provider. Keycloak adds `openid` to the token's scope claim anyway, so `/userinfo` returns `200`. Both errors are gone at once.
 
-Leave `MM_GITLABSETTINGS_SCOPE` unset. That's the part that feels wrong until you trace it through. Mattermost never asks for `openid`, so it never trips its own substring check and never reroutes off the GitLab provider. Keycloak stamps `openid` into the scope claim anyway, because the client scope is attached as a default, independent of what the client requested. `/userinfo` reads the claim, is satisfied, and returns `200`.
+I checked this on a clean Keycloak 26.7.0. With no scope on the request, the token's scope claim came back `email openid profile` and `/userinfo` returned `200` with a non-zero `id`. Remove the `openid` client scope and it drops straight back to `403`.
 
-Both jaws of the trap open at once, because the fix doesn't argue with either assumption directly. It moves responsibility for satisfying Keycloak's contract onto the side of the handshake that can actually satisfy it. Mattermost was never going to ask for `openid` safely, so stop making it ask.
-
-I reproduced this from scratch against a clean Keycloak 26.7.0 container, to rule out anything specific to my realm's history. With no `scope` parameter on the authorize request, the token's scope claim came back `email openid profile`, and `/userinfo` returned `200` with a populated, non-zero `id`. Detaching the client scope flipped it straight back to `403 insufficient_scope`. Nothing else changed between the two runs.
-
-One clarification, because it matters: no ID token is issued or consumed anywhere in this flow, and Mattermost never becomes an OIDC client. Only the access token's `scope` claim changes.
+To be clear about what this is not: no ID token is issued, and Mattermost never becomes an OIDC client. Only the access token's scope claim changes.
 
 ---
 
@@ -224,11 +209,11 @@ Run that once before any IdP cutover that touches an integration like this, and 
 
 ---
 
-## The shim has an expiry date
+## This breaks on Mattermost v11
 
-This whole thing is a narrow shim: a scope-claim trick layered onto an OAuth-shaped integration so it satisfies Keycloak's `/userinfo` contract. It's deliberate, and it comes with a built-in expiry date.
+Worth knowing before you build this: it stops working on Mattermost v11. The GitLab login button moves behind the same license gate as OIDC. In `server/config/client.go`, `EnableSignUpWithGitLab` now sits inside `if *license.Features.OpenId`, so on an unlicensed v11 the button just doesn't render. The `/oauth/gitlab/login` route still works server-side, so a direct link will get you through an upgrade if you're stuck.
 
-Mattermost **v11** moves the GitLab login button behind the same license gate as native OIDC. `EnableSignUpWithGitLab` now lives inside `if *license.Features.OpenId` in `server/config/client.go`. On an unlicensed v11 the button stops rendering, though the server-side `/oauth/gitlab/login` route still works, so a direct link is a stopgap if you're caught mid-upgrade. Here's the part that closes the loop: any license tier that gives you the GitLab button back also unlocks native OIDC. Once you're there, delete this shim entirely (the fake client scope, the five mappers, the numeric-ID join key) and use Mattermost's real OIDC provider instead. I'm on 10.11.14 as I write this, with the ESR line's end-of-life a few weeks out. Whichever upgrade crosses that license boundary is the same one that makes this whole post unnecessary.
+The catch: any license that brings the button back also gives you native OIDC. Once you have that, drop all of this (the client scope, the mappers, the numeric-ID attribute) and point Mattermost at Keycloak as a proper OIDC provider. I'm on 10.11.14 (Team Edition, ESR) for now, so it holds until I upgrade.
 
 ---
 
