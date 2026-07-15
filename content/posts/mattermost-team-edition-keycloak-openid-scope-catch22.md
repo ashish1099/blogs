@@ -1,19 +1,23 @@
 ---
-title: "When the Obvious OAuth Fix Makes It Worse"
+title: "How to Make Mattermost Team Edition Work with Keycloak 20 and Above"
 date: 2026-07-14T09:00:00+05:30
 draft: false
 tags: ["mattermost", "keycloak", "sso", "oauth", "oidc", "gitlab", "kubernetes", "self-hosted"]
 author: "Ashish Jaiswal"
-summary: "Keycloak 25 started enforcing the openid scope on /userinfo, which broke SSO for Mattermost Team Edition's Keycloak-as-GitLab setup. The fix everyone tries first breaks it worse. The real one lives in Keycloak's config, not Mattermost's."
+summary: "Any Keycloak from 20 onward enforces the openid scope on /userinfo, which breaks Mattermost Team Edition's Keycloak-as-GitLab SSO. The fix everyone tries first makes it worse. Here's what actually breaks, and the one client scope on Keycloak's side that makes it work."
 showToc: true
 TocOpen: true
 ---
 
-Every SSO login to chat.example.com started failing inside the same minute. Nobody had touched Mattermost. Someone had bumped Keycloak to a new major version, the kind of change that doesn't usually get its own changelog line. The only clue was an unhelpful error: *"Received invalid response from OAuth service provider."*
+I pointed a working Mattermost 10 Team Edition at a newer Keycloak 26. Nothing changed on the Mattermost side but the endpoint URLs and the client secret, yet every SSO login broke immediately. The only clue was an unhelpful error: *"Received invalid response from OAuth service provider."*
 
-So you go looking for the setting that's obviously wrong, and you find one: an empty `scope` where both the docs and common sense say `openid` belongs. You set it. Login breaks again, this time with a different error pointing at a completely different part of the system: *"Gitlab SSO through OAuth 2.0 not available on this server."*
+So I went looking for the setting that was obviously wrong, and found one: an empty `scope` where both the docs and common sense say `openid` belongs. I set it. Login broke again, this time with a different error pointing at a completely different part of the system: *"Gitlab SSO through OAuth 2.0 not available on this server."*
 
 That second failure is what this post is about. It's a genuine catch-22 between Mattermost Team Edition and Keycloak: two pieces of software, neither one misconfigured, whose defaults happen to be mutually exclusive. The fix only shows up once you stop asking "what value goes in this field" and start asking "whose job is it to put a scope on this token at all?"
+
+Here is the whole arrangement in one picture, before any code. Mattermost's built-in GitLab provider is aimed at Keycloak, and the two boxes on the right, a client scope named `openid` and a set of protocol mappers, are the entire fix. Everything below is why each piece has to be there.
+
+![Architecture: Mattermost Team Edition's GitLab OAuth provider aimed at Keycloak 20+, with a Default client scope named openid feeding the token endpoint and five dedicated protocol mappers shaping the userinfo response.](/images/mattermost-keycloak-architecture.svg)
 
 ---
 
@@ -32,15 +36,15 @@ MM_GITLABSETTINGS_TOKENENDPOINT: "https://keycloak.example.com/realms/myrealm/pr
 MM_GITLABSETTINGS_USERAPIENDPOINT: "https://keycloak.example.com/realms/myrealm/protocol/openid-connect/userinfo"
 ```
 
-There's nothing exotic about this. OAuth 2.0 doesn't care what the provider calls itself, only that the endpoints behave the way the client expects. (Both sides here were self-hosted on Kubernetes, but that's incidental; the contract below holds no matter how either is deployed.) The setup had run for years across Keycloak 19 and 20 without anyone touching it.
+There's nothing exotic about this. OAuth 2.0 doesn't care what the provider calls itself, only that the endpoints behave the way the client expects. (Both sides here were self-hosted on Kubernetes, but that's incidental; the contract below holds no matter how either is deployed.) I'd been running this setup for years across Keycloak 19 and 20 without touching it.
 
-Then we moved the same Mattermost instance to a newer Keycloak, version 25, changing nothing but the endpoint URLs and the client secret. Every SSO login broke at once.
+None of that changed when I moved to Keycloak 26. The trigger was entirely on the new server, and it starts at one endpoint.
 
 ---
 
 ## Failure one: Keycloak now insists on the `openid` scope
 
-Since Keycloak **19.0.2**, the `/userinfo` endpoint enforces something that was always technically correct: UserInfo is an OIDC feature, not a plain OAuth 2.0 one, and Keycloak won't answer for a token that never asked for OIDC. The check is blunt:
+Since Keycloak **19.0.2** (so in practice every Keycloak 20 and above), the `/userinfo` endpoint enforces something that was always technically correct: UserInfo is an OIDC feature, not a plain OAuth 2.0 one, and Keycloak won't answer for a token that never asked for OIDC. The check is blunt:
 
 ```java
 // UserInfoEndpoint.java
@@ -68,7 +72,7 @@ if scope != "" {
 
 So Keycloak got an authorize request with no `scope` parameter, minted a plain OAuth2 token with no `openid` in its scope claim, and `/userinfo` rejected it. Mattermost reported that rejection as a generic `api.user.authorize_oauth_user.response.app_error`, which renders as *"Received invalid response from OAuth service provider."*
 
-The thing to notice is that our configuration hadn't changed in any way that should matter. The exact same environment variables had worked against Keycloak 19 and 20. What changed was the enforcement on Keycloak's side, not anything on ours.
+The thing to notice is that my configuration hadn't changed in any way that should matter. The exact same environment variables had worked against Keycloak 19 and 20. What changed was the enforcement on Keycloak's side, not anything on mine.
 
 ---
 
@@ -84,7 +88,7 @@ Login breaks again. Different error this time:
 
 > Gitlab SSO through OAuth 2.0 not available on this server.
 
-This one is stranger. It doesn't read like a Keycloak problem at all; it reads like Mattermost thinks GitLab SSO was never configured, even though nothing changed except one string thirty seconds ago.
+This one is stranger. It doesn't read like a Keycloak problem at all; it reads like Mattermost thinks GitLab SSO was never configured, even though the only thing I'd changed was one line of config.
 
 The cause is a second overload, this time on Mattermost's side. `getSSOProvider()` treats the scope string not as a request parameter but as a provider selector:
 
@@ -103,26 +107,11 @@ The moment the scope string contains `"openid"` as a raw substring (not a parsed
 
 Lay the two failures side by side and the shape of the trap is obvious:
 
-```
-      scope left unset                          scope = "openid profile email"
-             │                                              │
-             ▼                                              ▼
-  Keycloak issues a plain OAuth2               Mattermost's getSSOProvider() sees
-  token — no "openid" in the                   "openid" as a substring, reroutes to
-  scope claim                                  the OpenID provider
-             │                                              │
-             ▼                                              ▼
-  /userinfo → 403 insufficient_scope           GetOAuthProvider("openid") → nil
-  "Missing openid scope"                       (Team Edition ships none)
-             │                                              │
-             ▼                                              ▼
-  "Received invalid response from              "Gitlab SSO through OAuth 2.0
-   OAuth service provider."                      not available on this server."
-```
+![The catch-22: with the scope unset, Keycloak rejects /userinfo with 403 Missing openid scope; with the scope set to openid, Mattermost reroutes to an OpenID provider Team Edition does not ship. Both paths end in a failed login.](/images/mattermost-keycloak-catch22.svg)
 
 There's no third value to try. Every string you can put in `MM_GITLABSETTINGS_SCOPE` either omits `openid`, and Keycloak rejects the token, or contains it, and Mattermost reroutes off the GitLab provider. Neither side is misconfigured. It's two reasonable defaults that happen to be mutually exclusive.
 
-We weren't the first to hit this. The same question sits, unanswered, on the [keycloak-user mailing list](https://groups.google.com/g/keycloak-user/c/MxsCK-9oxmI). The obvious ask, a Keycloak flag to relax the `/userinfo` scope check for legacy integrations like this, was raised and [closed as not planned](https://github.com/keycloak/keycloak/issues/32973). There's no config-only escape.
+I wasn't the first to hit this. The same question sits, unanswered, on the [keycloak-user mailing list](https://groups.google.com/g/keycloak-user/c/MxsCK-9oxmI). The obvious ask, a Keycloak flag to relax the `/userinfo` scope check for legacy integrations like this, was raised and [closed as not planned](https://github.com/keycloak/keycloak/issues/32973). There's no config-only escape.
 
 ---
 
@@ -144,7 +133,7 @@ String scopeParam = getClientScopesStream()
         .collect(Collectors.joining(" "));
 ```
 
-The key detail: default client scopes are applied to every token issued to that client, whether or not the authorize request mentioned them. That exists so an admin can guarantee certain claims land on every token without trusting each client to ask for them correctly. Which is exactly our situation, except we're using it to inject a scope *name* rather than a claim value.
+The key detail: default client scopes are applied to every token issued to that client, whether or not the authorize request mentioned them. That exists so an admin can guarantee certain claims land on every token without trusting each client to ask for them correctly. Which is exactly the situation here, except we're using it to inject a scope *name* rather than a claim value.
 
 So: create a Keycloak client scope literally named `openid`, set its type to **Default** (not Optional), and turn on **Include in token scope**. It needs no mappers. It just has to exist and be attached.
 
@@ -169,7 +158,7 @@ Leave `MM_GITLABSETTINGS_SCOPE` unset. That's the part that feels wrong until yo
 
 Both jaws of the trap open at once, because the fix doesn't argue with either assumption directly. It moves responsibility for satisfying Keycloak's contract onto the side of the handshake that can actually satisfy it. Mattermost was never going to ask for `openid` safely, so stop making it ask.
 
-We reproduced this from scratch against a clean Keycloak 26.7.0 container, to rule out anything specific to our realm's history. With no `scope` parameter on the authorize request, the token's scope claim came back `email openid profile`, and `/userinfo` returned `200` with a populated, non-zero `id`. Detaching the client scope flipped it straight back to `403 insufficient_scope`. Nothing else changed between the two runs.
+I reproduced this from scratch against a clean Keycloak 26.7.0 container, to rule out anything specific to my realm's history. With no `scope` parameter on the authorize request, the token's scope claim came back `email openid profile`, and `/userinfo` returned `200` with a populated, non-zero `id`. Detaching the client scope flipped it straight back to `403 insufficient_scope`. Nothing else changed between the two runs.
 
 One clarification, because it matters: no ID token is issued or consumed anywhere in this flow, and Mattermost never becomes an OIDC client. Only the access token's `scope` claim changes.
 
@@ -239,7 +228,7 @@ Run that once before any IdP cutover that touches an integration like this, and 
 
 This whole thing is a narrow shim: a scope-claim trick layered onto an OAuth-shaped integration so it satisfies Keycloak's `/userinfo` contract. It's deliberate, and it comes with a built-in expiry date.
 
-Mattermost **v11** moves the GitLab login button behind the same license gate as native OIDC. `EnableSignUpWithGitLab` now lives inside `if *license.Features.OpenId` in `server/config/client.go`. On an unlicensed v11 the button stops rendering, though the server-side `/oauth/gitlab/login` route still works, so a direct link is a stopgap if you're caught mid-upgrade. Here's the part that closes the loop: any license tier that gives you the GitLab button back also unlocks native OIDC. Once you're there, delete this shim entirely (the fake client scope, the five mappers, the numeric-ID join key) and use Mattermost's real OIDC provider instead. We're on 10.11.14 as I write this, with the ESR line's end-of-life a few weeks out. Whichever upgrade crosses that license boundary is the same one that makes this whole post unnecessary.
+Mattermost **v11** moves the GitLab login button behind the same license gate as native OIDC. `EnableSignUpWithGitLab` now lives inside `if *license.Features.OpenId` in `server/config/client.go`. On an unlicensed v11 the button stops rendering, though the server-side `/oauth/gitlab/login` route still works, so a direct link is a stopgap if you're caught mid-upgrade. Here's the part that closes the loop: any license tier that gives you the GitLab button back also unlocks native OIDC. Once you're there, delete this shim entirely (the fake client scope, the five mappers, the numeric-ID join key) and use Mattermost's real OIDC provider instead. I'm on 10.11.14 as I write this, with the ESR line's end-of-life a few weeks out. Whichever upgrade crosses that license boundary is the same one that makes this whole post unnecessary.
 
 ---
 

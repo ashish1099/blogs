@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 660" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+  <defs>
+    <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#475569"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1060" height="660" fill="#ffffff"/>
+  <text x="530" y="40" text-anchor="middle" font-size="24" font-weight="700" fill="#1e293b">The catch-22: neither scope value works</text>
+
+  <rect x="380" y="62" width="300" height="50" rx="9" fill="#fef9c3" stroke="#eab308" stroke-width="2"/>
+  <text x="530" y="93" text-anchor="middle" font-size="16" font-weight="600" fill="#713f12">MM_GITLABSETTINGS_SCOPE</text>
+
+  <line x1="452" y1="112" x2="285" y2="148" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="608" y1="112" x2="775" y2="148" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
+
+  <rect x="120" y="150" width="280" height="54" rx="9" fill="#ffedd5" stroke="#f97316" stroke-width="2"/>
+  <text x="260" y="183" text-anchor="middle" font-size="18" font-weight="600" fill="#9a3412">scope: unset</text>
+  <line x1="260" y1="204" x2="260" y2="246" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
+
+  <rect x="120" y="250" width="280" height="64" rx="9" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+  <text x="260" y="278" text-anchor="middle" font-size="16" fill="#1e293b">token carries no</text>
+  <text x="260" y="299" text-anchor="middle" font-size="16" fill="#1e293b">openid scope</text>
+  <line x1="260" y1="314" x2="260" y2="360" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
+
+  <rect x="120" y="364" width="280" height="64" rx="9" fill="#fee2e2" stroke="#ef4444" stroke-width="2"/>
+  <text x="260" y="392" text-anchor="middle" font-size="16" fill="#991b1b">/userinfo &#8594; 403</text>
+  <text x="260" y="413" text-anchor="middle" font-size="16" fill="#991b1b">Missing openid scope</text>
+  <line x1="260" y1="428" x2="260" y2="474" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
+
+  <rect x="120" y="478" width="280" height="74" rx="9" fill="#fee2e2" stroke="#ef4444" stroke-width="2"/>
+  <text x="260" y="509" text-anchor="middle" font-size="14.5" fill="#991b1b">"Received invalid response</text>
+  <text x="260" y="529" text-anchor="middle" font-size="14.5" fill="#991b1b">from OAuth provider"</text>
+
+  <rect x="640" y="150" width="300" height="54" rx="9" fill="#ffedd5" stroke="#f97316" stroke-width="2"/>
+  <text x="790" y="183" text-anchor="middle" font-size="16" font-weight="600" fill="#9a3412">scope: openid profile email</text>
+  <line x1="790" y1="204" x2="790" y2="246" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
+
+  <rect x="640" y="250" width="300" height="64" rx="9" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="790" y="278" text-anchor="middle" font-size="16" fill="#1e293b">getSSOProvider() sees</text>
+  <text x="790" y="299" text-anchor="middle" font-size="16" fill="#1e293b">"openid" substring</text>
+  <line x1="790" y1="314" x2="790" y2="360" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
+
+  <rect x="640" y="364" width="300" height="64" rx="9" fill="#fee2e2" stroke="#ef4444" stroke-width="2"/>
+  <text x="790" y="392" text-anchor="middle" font-size="15" fill="#991b1b">reroutes to OpenID provider</text>
+  <text x="790" y="413" text-anchor="middle" font-size="15" fill="#991b1b">not shipped in Team Edition</text>
+  <line x1="790" y1="428" x2="790" y2="474" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
+
+  <rect x="640" y="478" width="300" height="74" rx="9" fill="#fee2e2" stroke="#ef4444" stroke-width="2"/>
+  <text x="790" y="509" text-anchor="middle" font-size="14.5" fill="#991b1b">"Gitlab SSO not available</text>
+  <text x="790" y="529" text-anchor="middle" font-size="14.5" fill="#991b1b">on this server"</text>
+
+  <rect x="270" y="580" width="520" height="56" rx="9" fill="#fef9c3" stroke="#eab308" stroke-width="1.5"/>
+  <text x="530" y="605" text-anchor="middle" font-size="14" fill="#713f12">Every value omits openid (Keycloak 403)</text>
+  <text x="530" y="625" text-anchor="middle" font-size="14" fill="#713f12">or contains it (Mattermost reroute).</text>
+</svg>

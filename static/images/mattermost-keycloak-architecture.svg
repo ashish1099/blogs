@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 690" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+  <defs>
+    <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#475569"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1180" height="690" fill="#ffffff"/>
+  <text x="590" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#1e293b">Mattermost Team Edition  +  Keycloak 20+  SSO</text>
+
+  <rect x="560" y="120" width="600" height="470" rx="14" fill="#eff6ff" stroke="#93c5fd" stroke-width="2" stroke-dasharray="6 5"/>
+  <text x="582" y="150" font-size="20" font-weight="700" fill="#2563eb">Keycloak 20+</text>
+
+  <rect x="30" y="230" width="150" height="90" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+  <text x="105" y="270" text-anchor="middle" font-size="17" fill="#1e293b">User</text>
+  <text x="105" y="292" text-anchor="middle" font-size="17" fill="#1e293b">browser</text>
+
+  <rect x="250" y="208" width="235" height="132" rx="10" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="367" y="248" text-anchor="middle" font-size="18" font-weight="600" fill="#1e293b">Mattermost TE</text>
+  <text x="367" y="272" text-anchor="middle" font-size="16" fill="#334155">GitLab OAuth</text>
+  <text x="367" y="293" text-anchor="middle" font-size="16" fill="#334155">provider</text>
+  <text x="252" y="362" font-size="14" fill="#7c3aed">MM_GITLABSETTINGS_SCOPE: (empty)</text>
+
+  <rect x="590" y="180" width="170" height="54" rx="9" fill="#cffafe" stroke="#06b6d4" stroke-width="2"/>
+  <text x="675" y="213" text-anchor="middle" font-size="18" fill="#0e7490">/auth</text>
+  <rect x="590" y="250" width="170" height="54" rx="9" fill="#cffafe" stroke="#06b6d4" stroke-width="2"/>
+  <text x="675" y="283" text-anchor="middle" font-size="18" fill="#0e7490">/token</text>
+  <rect x="590" y="320" width="170" height="54" rx="9" fill="#cffafe" stroke="#06b6d4" stroke-width="2"/>
+  <text x="675" y="353" text-anchor="middle" font-size="18" fill="#0e7490">/userinfo</text>
+
+  <rect x="810" y="180" width="330" height="92" rx="10" fill="#dcfce7" stroke="#22c55e" stroke-width="2"/>
+  <text x="975" y="216" text-anchor="middle" font-size="16" font-weight="600" fill="#166534">Default client scope</text>
+  <text x="975" y="244" text-anchor="middle" font-size="19" font-weight="700" fill="#166534">"openid"</text>
+
+  <rect x="810" y="300" width="330" height="100" rx="10" fill="#ffedd5" stroke="#f97316" stroke-width="2"/>
+  <text x="975" y="332" text-anchor="middle" font-size="16" font-weight="600" fill="#9a3412">Dedicated mappers</text>
+  <text x="975" y="357" text-anchor="middle" font-size="15" fill="#9a3412">id(long), username, login,</text>
+  <text x="975" y="378" text-anchor="middle" font-size="15" fill="#9a3412">email, name</text>
+
+  <line x1="182" y1="275" x2="246" y2="275" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="214" y="266" text-anchor="middle" font-size="14" fill="#475569">login</text>
+
+  <line x1="487" y1="250" x2="586" y2="222" stroke="#8b5cf6" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="536" y="230" text-anchor="middle" font-size="13" fill="#6d28d9">1. code flow</text>
+
+  <line x1="487" y1="318" x2="586" y2="345" stroke="#8b5cf6" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="533" y="342" text-anchor="middle" font-size="13" fill="#6d28d9">2. /userinfo</text>
+
+  <line x1="808" y1="224" x2="764" y2="262" stroke="#16a34a" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="800" y="248" text-anchor="end" font-size="13" fill="#166534">adds openid</text>
+
+  <line x1="808" y1="350" x2="764" y2="350" stroke="#ea580c" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="802" y="342" text-anchor="end" font-size="13" fill="#9a3412">shapes JSON</text>
+
+  <rect x="560" y="612" width="292" height="62" rx="9" fill="#fef9c3" stroke="#eab308" stroke-width="1.5"/>
+  <text x="574" y="638" font-size="13.5" fill="#713f12">Fix 1: Mattermost never asks for openid;</text>
+  <text x="574" y="657" font-size="13.5" fill="#713f12">the default scope adds it anyway.</text>
+
+  <rect x="868" y="612" width="292" height="62" rx="9" fill="#fef9c3" stroke="#eab308" stroke-width="1.5"/>
+  <text x="882" y="638" font-size="13.5" fill="#713f12">Fix 2: id claim must be JSON long;</text>
+  <text x="882" y="657" font-size="13.5" fill="#713f12">mappers set on /userinfo.</text>
+</svg>
