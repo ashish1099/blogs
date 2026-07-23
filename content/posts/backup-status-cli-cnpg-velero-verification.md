@@ -4,7 +4,7 @@ date: 2026-07-23T08:30:00+05:30
 draft: false
 tags: ["kubernetes", "backup", "cnpg", "postgresql", "velero", "prometheus", "go", "cli", "netbird", "sre", "kubeaid"]
 author: "Ashish Jaiswal"
-summary: "kubeaid-cli backup status reports CNPG and Velero backup health in one command. The design rationale behind it, and four traps worth knowing if you build something similar: proxy-swallowed subresources, double-counted summaries, stream naming, and duration formatting."
+summary: "kubeaid-cli backup status reports CNPG and Velero backup health in one command. The design rationale behind it, and three traps worth knowing if you build something similar: double-counted summaries, stream naming, and duration formatting."
 showToc: true
 TocOpen: true
 ---
@@ -23,7 +23,7 @@ and mentally joining gauges per resource to decide whether a given database is p
 Nobody does that on a Tuesday afternoon, so it doesn't get checked.
 
 `kubeaid-cli backup status` makes it one command. What follows is why it is built the way it
-is, and four traps in this problem space that are worth knowing before you hit them.
+is, and three traps in this problem space that are worth knowing before you hit them.
 
 ## Put the verdict where the domain knowledge lives
 
@@ -31,7 +31,10 @@ The rules for "is this resource backed up" belong next to the code that knows ho
 Velero actually behave. There is exactly one copy of that knowledge, and it is the exporter.
 
 So the exporter serves `GET /api/v1/backups`, which does the gauge join itself and returns one
-evaluated status per resource. The CLI fetches, adjusts ages, and prints. Roughly 350 lines of
+evaluated status per resource. The CLI finds the exporter's Service by label, fetches over
+`pods/portforward` with client-go, adjusts ages, and prints. Port-forward rather than the API
+server's service proxy because it is the transport that survives an L7 proxy sitting in front
+of kube-apiserver, which is how managed clusters are commonly reached. Roughly 350 lines of
 grouping and RPO comparison stay in one place instead of being reimplemented client-side,
 where they would drift from the exporter that owns them the first time either changed.
 
@@ -41,40 +44,6 @@ elapsed time since collection or it will under-report every age by however stale
 is. A twelve-hour-old backup read through a three-hour-old collection looks nine hours old,
 which is well inside most RPOs. That is why the report leads with a freshness line rather than
 burying it.
-
-## An L7 proxy can swallow a subresource and look like your app
-
-KubeAid reaches managed clusters through NetBird's `ClusterProxy`, an L7 proxy in front of
-kube-apiserver. It forwards the standard REST verbs perfectly well, which is why everything
-else about the cluster works normally.
-
-What it does not implement is the API server's service proxy subresource:
-
-```
-/api/v1/namespaces/<ns>/services/<scheme:name:port>/proxy/<path>
-```
-
-Ask for that path through the proxy, and the proxy's own router answers, not the API server:
-
-```
-Error from server (NotFound): the server could not find the requested resource
-```
-
-client-go renders that identically to a genuine API server 404. From the error text there is
-no way to distinguish "your application does not serve this route" from "this request never
-reached your application". Every layer you would normally suspect looks healthy, because every
-layer is healthy: the image digest matches, the route is compiled into the binary, the
-EndpointSlice has one ready address pointing at the right pod.
-
-The command therefore fetches over `pods/portforward` instead, opening the subresource with
-client-go directly rather than spawning a kubectl binary. That negotiates an upgraded
-SPDY/WebSocket stream rather than making an HTTP proxy hop, and streams are what a proxy like
-this is built to carry. It is the same subresource `kubectl port-forward` uses, which is the
-practical tell: if `kubectl port-forward` works against a cluster, this transport works too.
-
-The general form of the trap is worth holding on to. When an error is ambiguous between two
-layers, test the layers separately before investigating either one. A port-forward and a curl
-settle in thirty seconds a question that reading application code cannot answer at all.
 
 ## A summary line needs a denominator
 
@@ -188,8 +157,6 @@ class immediately and cheaply. Restore verification is the next piece of work.
 - Put reconciliation logic next to the domain knowledge. A CLI that reimplements the rules
   will drift from the exporter that owns them.
 - Summary lines need denominators. Without a total, wrong arithmetic looks reasonable.
-- When an error is ambiguous between two layers, test the layers separately. A 404 from an L7
-  proxy is indistinguishable from a 404 from your application.
 - Name things after the object someone has to go open. `CronJob` and `Barman` tell you where
   to look; `logical` and `wal` do not.
 - Verification that is not one command does not happen.
