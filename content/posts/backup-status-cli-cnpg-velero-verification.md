@@ -9,6 +9,78 @@ showToc: true
 TocOpen: true
 ---
 
+<style>
+.bk-hero{--bk-live:#1a7f52;background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px;margin:0 0 34px}
+:root[data-theme="dark"] .bk-hero{--bk-live:#4cc38a}
+.bk-hero__marks{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.bk-hero__wordmark{height:21px;width:auto;color:var(--primary);flex:none}
+.bk-hero__join{color:var(--secondary);flex:none}
+.bk-hero__k8s{display:inline-flex;align-items:center;gap:8px;color:var(--primary);font-weight:600;font-size:.95rem}
+.bk-hero__k8s svg{width:26px;height:26px;flex:none}
+.bk-hero__line{margin:15px 0 18px;color:var(--secondary);font-size:.92rem;line-height:1.5}
+.bk-hero__cov{display:flex;flex-direction:column;gap:11px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.82rem}
+.bk-hero__grp{display:flex;align-items:baseline;gap:16px}
+.bk-hero__lbl{flex:none;width:38px;font-size:.66rem;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary)}
+.bk-hero__items{display:flex;flex-wrap:wrap;gap:7px 20px}
+.bk-hero__eng{display:inline-flex;align-items:center;gap:7px;color:var(--secondary);white-space:nowrap}
+.bk-hero__eng--live{color:var(--primary)}
+.bk-hero__eng i{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--secondary);box-sizing:border-box;flex:none}
+.bk-hero__eng--live i{background:var(--bk-live);border-color:var(--bk-live)}
+@media (max-width:480px){.bk-hero{padding:18px 16px}.bk-hero__grp{flex-direction:column;gap:6px}}
+</style>
+
+<div class="bk-hero">
+  <div class="bk-hero__marks">
+    <svg class="bk-hero__wordmark" viewBox="0 0 137 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Obmondo">
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M23.3333 12.3333C23.3333 18.7767 18.11 24 11.6667 24C5.22334 24 0 18.7767 0 12.3333C0 5.89001 5.22334 0.666667 11.6667 0.666667C18.11 0.666667 23.3333 5.89001 23.3333 12.3333ZM11.6667 20.6667C16.269 20.6667 20 16.9357 20 12.3333C20 7.73096 16.269 4 11.6667 4C7.06429 4 3.33333 7.73096 3.33333 12.3333C3.33333 16.9357 7.06429 20.6667 11.6667 20.6667Z" fill="currentColor"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M84.6667 15.3333C84.6667 20.1198 80.7865 24 76 24C71.2135 24 67.3333 20.1198 67.3333 15.3333C67.3333 10.5469 71.2135 6.66667 76 6.66667C80.7865 6.66667 84.6667 10.5469 84.6667 15.3333ZM76 20.6667C78.9455 20.6667 81.3333 18.2789 81.3333 15.3333C81.3333 12.3878 78.9455 10 76 10C73.0545 10 70.6667 12.3878 70.6667 15.3333C70.6667 18.2789 73.0545 20.6667 76 20.6667Z" fill="currentColor"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M136.667 15.3333C136.667 20.1198 132.786 24 128 24C123.214 24 119.333 20.1198 119.333 15.3333C119.333 10.5469 123.214 6.66667 128 6.66667C132.786 6.66667 136.667 10.5469 136.667 15.3333ZM128 20.6667C130.946 20.6667 133.333 18.2789 133.333 15.3333C133.333 12.3878 130.946 10 128 10C125.054 10 122.667 12.3878 122.667 15.3333C122.667 18.2789 125.054 20.6667 128 20.6667Z" fill="currentColor"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M28 0H24.6667V15.3333C24.6667 20.1198 28.5469 24 33.3333 24C38.1198 24 42 20.1198 42 15.3333C42 10.5469 38.1198 6.66667 33.3333 6.66667C31.322 6.66667 29.4706 7.35185 28 8.50154V0ZM28 15.3333C28 18.2789 30.3878 20.6667 33.3333 20.6667C36.2789 20.6667 38.6667 18.2789 38.6667 15.3333C38.6667 12.3878 36.2789 10 33.3333 10C30.3878 10 28 12.3878 28 15.3333Z" fill="currentColor"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M114.667 0H118V15.3333C118 20.1198 114.12 24 109.333 24C104.547 24 100.667 20.1198 100.667 15.3333C100.667 10.5469 104.547 6.66667 109.333 6.66667C111.345 6.66667 113.196 7.35185 114.667 8.50154V0ZM114.667 15.3333C114.667 18.2789 112.279 20.6667 109.333 20.6667C106.388 20.6667 104 18.2789 104 15.3333C104 12.3878 106.388 10 109.333 10C112.279 10 114.667 12.3878 114.667 15.3333Z" fill="currentColor"/>
+      <path d="M43 13.6667V24H46.3333V13.6667C46.3333 11.8257 47.8257 10.3333 49.6667 10.3333C51.5076 10.3333 53 11.8257 53 13.6667V24H56.3333V13.6667C56.3333 11.8257 57.8257 10.3333 59.6667 10.3333C61.5076 10.3333 63 11.8257 63 13.6667V24H66.3333V13.6667C66.3333 9.98477 63.3486 7 59.6667 7C57.6753 7 55.8878 7.87342 54.6667 9.25698C53.4455 7.87342 51.658 7 49.6667 7C45.9848 7 43 9.98477 43 13.6667Z" fill="currentColor"/>
+      <path d="M86.3333 13.6667V24H89.6667V13.6667C89.6667 11.8257 91.159 10.3333 93 10.3333C94.841 10.3333 96.3333 11.8257 96.3333 13.6667V24H99.6667V13.6667C99.6667 9.98477 96.6819 7 93 7C89.3181 7 86.3333 9.98477 86.3333 13.6667Z" fill="currentColor"/>
+    </svg>
+    <span class="bk-hero__join" aria-hidden="true">&#215;</span>
+    <span class="bk-hero__k8s">
+      <svg viewBox="0 0 100 100" fill="none" role="img" aria-label="Kubernetes">
+        <path d="M50 8 L82.84 23.81 L90.95 59.35 L68.22 87.84 L31.78 87.84 L9.05 59.35 L17.16 23.81 Z" stroke="currentColor" stroke-width="5.5" stroke-linejoin="round"/>
+        <circle cx="50" cy="50" r="9" stroke="currentColor" stroke-width="4.5"/>
+        <g stroke="currentColor" stroke-width="4.5" stroke-linecap="round">
+          <path d="M50 41 L50 22"/>
+          <path d="M57.04 44.39 L71.89 32.54"/>
+          <path d="M58.77 52.00 L77.30 56.23"/>
+          <path d="M53.90 58.11 L62.15 75.23"/>
+          <path d="M46.10 58.11 L37.85 75.23"/>
+          <path d="M41.23 52.00 L22.70 56.23"/>
+          <path d="M42.96 44.39 L28.11 32.54"/>
+        </g>
+      </svg>
+      Kubernetes
+    </span>
+  </div>
+
+  <p class="bk-hero__line">One command to see whether every database and every volume in your cluster
+  is actually backed up, and how recently.</p>
+
+  <div class="bk-hero__cov">
+    <div class="bk-hero__grp">
+      <span class="bk-hero__lbl">now</span>
+      <span class="bk-hero__items">
+        <span class="bk-hero__eng bk-hero__eng--live"><i></i>CloudNativePG</span>
+        <span class="bk-hero__eng bk-hero__eng--live"><i></i>Velero</span>
+      </span>
+    </div>
+    <div class="bk-hero__grp">
+      <span class="bk-hero__lbl">next</span>
+      <span class="bk-hero__items">
+        <span class="bk-hero__eng"><i></i>MongoDB</span>
+        <span class="bk-hero__eng"><i></i>RabbitMQ</span>
+        <span class="bk-hero__eng"><i></i>Redis</span>
+      </span>
+    </div>
+  </div>
+</div>
+
 Ask anyone running a Kubernetes cluster whether their backups work and you will get a
 confident yes. Ask them to prove it for every database and every volume in the cluster,
 right now, and the confidence usually turns into a Grafana tab and some scrolling.
@@ -90,6 +162,11 @@ On top of that it evaluates ages against a configurable RPO rather than handing 
 numbers, so the output is a verdict rather than a spreadsheet. Collector-level problems are
 reported separately from resource-level ones, so if the exporter cannot reach the bucket at
 all you are told that plainly instead of being shown a screen of misleading greens.
+
+Today that covers CloudNativePG and Velero, which between them account for most of what
+needs backing up in a typical cluster. MongoDB, RabbitMQ and Redis are next, each following
+the same principle: check the artifact in storage, and name the things that were never set up
+in the first place.
 
 ## Your go-to command: `kubeaid-cli backup status`
 
