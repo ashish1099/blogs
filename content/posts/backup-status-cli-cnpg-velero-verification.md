@@ -4,7 +4,7 @@ date: 2026-07-23T08:30:00+05:30
 draft: false
 tags: ["kubernetes", "backup", "cnpg", "postgresql", "velero", "prometheus", "go", "cli", "netbird", "sre", "kubeaid"]
 author: "Ashish Jaiswal"
-summary: "Building kubeaid-cli backup status: why a 404 from an L7 proxy looked exactly like a missing route, why the first summary line counted more resources than existed, and what changes when checking your backups is one command instead of a metrics query."
+summary: "kubeaid-cli backup status reports CNPG and Velero backup health in one command. The design rationale behind it, and four traps worth knowing if you build something similar: proxy-swallowed subresources, double-counted summaries, stream naming, and duration formatting."
 showToc: true
 TocOpen: true
 ---
@@ -13,150 +13,123 @@ Everyone running Kubernetes in production has backups. Far fewer can tell you, r
 without opening Grafana, whether last night's backup actually ran for every database and
 every volume they care about.
 
-We had the data. CNPG clusters and Velero volume backups were both being watched by an
-in-cluster exporter publishing Prometheus gauges: latest backup age, oldest backup age,
-maximum interval between backups, per resource. Good enough to alert on. Close to useless
+The data usually exists. An in-cluster exporter watches CNPG clusters and Velero volume
+backups and publishes Prometheus gauges: latest backup age, oldest backup age, maximum
+interval between backups, per resource. That is good enough to alert on and close to useless
 when you want an answer in ten seconds.
 
-To get that answer by hand you had to know the metric names, run three or four queries, and
-mentally join gauges per resource to decide whether a given database was actually protected.
-Nobody does that on a Tuesday afternoon. So it didn't get checked.
+Getting that answer by hand means knowing the metric names, running three or four queries,
+and mentally joining gauges per resource to decide whether a given database is protected.
+Nobody does that on a Tuesday afternoon, so it doesn't get checked.
 
-That gap is what `kubeaid-cli backup status` closes. The interesting parts of building it
-were not the parts I expected.
+`kubeaid-cli backup status` makes it one command. What follows is why it is built the way it
+is, and four traps in this problem space that are worth knowing before you hit them.
 
-## Reconcile on the server, not in the CLI
+## Put the verdict where the domain knowledge lives
 
-The first design decision was where to turn gauges into a verdict.
+The rules for "is this resource backed up" belong next to the code that knows how CNPG and
+Velero actually behave. There is exactly one copy of that knowledge, and it is the exporter.
 
-An early version of this command pulled the raw metric families out of the exporter and did
-the reconciliation client-side: group samples by resource, find the age gauge, compare
-against the RPO, decide if it counts as healthy. That was around 350 lines of gauge-joining
-logic living in a CLI.
+So the exporter serves `GET /api/v1/backups`, which does the gauge join itself and returns one
+evaluated status per resource. The CLI fetches, adjusts ages, and prints. Roughly 350 lines of
+grouping and RPO comparison stay in one place instead of being reimplemented client-side,
+where they would drift from the exporter that owns them the first time either changed.
 
-It was the wrong place for it. The rules for "is this resource backed up" belong next to the
-code that knows how CNPG and Velero actually behave, and there is exactly one copy of that
-knowledge: the exporter. Any second implementation drifts.
+One subtlety leaks into the API contract regardless. The exporter measures ages at collection
+time, not at request time, and reports when each collector last ran. A consumer has to add the
+elapsed time since collection or it will under-report every age by however stale the collector
+is. A twelve-hour-old backup read through a three-hour-old collection looks nine hours old,
+which is well inside most RPOs. That is why the report leads with a freshness line rather than
+burying it.
 
-So the exporter grew a `GET /api/v1/backups` endpoint that does the join itself and returns
-one evaluated status per resource, and the CLI became a thin client. Fetch, adjust the ages,
-print. All 350 lines of reconciliation went away.
+## An L7 proxy can swallow a subresource and look like your app
 
-One subtlety survived into the API contract. The exporter measures ages at collection time,
-not at request time, and it reports when each collector last ran. A consumer has to add the
-elapsed time since collection or it will quietly under-report every age by however stale the
-collector is. That is a real trap, and the reason the report leads with a freshness line
-instead of burying it.
+KubeAid reaches managed clusters through NetBird's `ClusterProxy`, an L7 proxy in front of
+kube-apiserver. It forwards the standard REST verbs perfectly well, which is why everything
+else about the cluster works normally.
 
-## The 404 that wasn't ours
-
-First live run against a real cluster:
-
-```
-Error from server (NotFound): the server could not find the requested resource
-```
-
-That is precisely what you see when an application does not serve the path you asked for. So
-I went looking for a missing route.
-
-Was the deployed image older than I thought? The pod's `imageID` digest matched the published
-image byte for byte. Was the route compiled in? Running `strings` on the binary found both the
-path and the handler symbol. Was the Service pointing at the wrong pod? The EndpointSlice had
-exactly one address, ready and serving, with a `targetRef` uid matching the running pod.
-
-Every hop between kubectl and the container checked out. Which meant the 404 was not coming
-from the application at all. Something in the middle was answering.
-
-KubeAid reaches managed clusters through NetBird's `ClusterProxy`, an L7 proxy sitting in
-front of kube-apiserver. It forwards the standard REST verbs perfectly well, which is why
-everything else about the cluster works. What it does not implement is the API server's
-service proxy subresource:
+What it does not implement is the API server's service proxy subresource:
 
 ```
 /api/v1/namespaces/<ns>/services/<scheme:name:port>/proxy/<path>
 ```
 
-Ask for that through the proxy and its own router, not the API server, returns a plain 404.
+Ask for that path through the proxy, and the proxy's own router answers, not the API server:
+
+```
+Error from server (NotFound): the server could not find the requested resource
+```
+
 client-go renders that identically to a genuine API server 404. From the error text there is
-no way to tell "your app has no such route" from "this path never reached your app".
+no way to distinguish "your application does not serve this route" from "this request never
+reached your application". Every layer you would normally suspect looks healthy, because every
+layer is healthy: the image digest matches, the route is compiled into the binary, the
+EndpointSlice has one ready address pointing at the right pod.
 
-The fix was to stop using the service proxy. `pods/portforward` negotiates an upgraded
-SPDY/WebSocket stream rather than making an HTTP proxy hop, and streams are exactly what a
-proxy like this is built to carry. Proof took thirty seconds: `kubectl port-forward` to the
-same pod through the same proxy, then curl, and the JSON came back immediately.
+The command therefore fetches over `pods/portforward` instead, opening the subresource with
+client-go directly rather than spawning a kubectl binary. That negotiates an upgraded
+SPDY/WebSocket stream rather than making an HTTP proxy hop, and streams are what a proxy like
+this is built to carry. It is the same subresource `kubectl port-forward` uses, which is the
+practical tell: if `kubectl port-forward` works against a cluster, this transport works too.
 
-So the command now opens the `pods/portforward` subresource with client-go directly, the same
-subresource `kubectl port-forward` uses, forwards an ephemeral local port, issues the GET
-against localhost and tears the tunnel down. No kubectl binary is spawned.
+The general form of the trap is worth holding on to. When an error is ambiguous between two
+layers, test the layers separately before investigating either one. A port-forward and a curl
+settle in thirty seconds a question that reading application code cannot answer at all.
 
-The lesson I would want back at hour one: when a 404 is ambiguous between "the app lacks the
-route" and "the transport lacks support for this path", test the transport by itself. I spent
-hours proving the application was correct when a single port-forward would have moved the
-suspicion to the right layer immediately.
+## A summary line needs a denominator
 
-## The summary line that counted more than existed
-
-With connectivity solved, the first fleet-wide run produced a summary along the lines of:
-
-```
-107 exceeds_rpo, 86 no_backup, 40 collector_error
-```
-
-The individual row statuses were right. The arithmetic was not.
-
-A CNPG cluster does not produce one row in this report. It produces two, because it has two
-independent backup streams: a logical dump and a WAL archive. They fail independently and
+A CNPG cluster does not produce one row in a backup report. It produces two, because it has
+two independent backup streams: a logical dump and a WAL archive. They fail independently and
 both matter, so both get a row.
 
-The summary was tallying rows. A cluster with no logical backup and a broken WAL check was
-counted once under `no_backup` and again under `collector_error`. Every cluster with two
-unhealthy streams inflated the totals twice.
+That makes the obvious summary implementation wrong. Tally the rows by status, and a cluster
+with no logical backup and a broken WAL check is counted once under `no_backup` and again
+under `collector_error`. Every resource with multiple unhealthy streams inflates the totals
+once per stream.
 
-What made it hard to notice is that the line never printed a denominator. There was no
-resource total to check the parts against, so numbers that summed to more resources than the
-cluster contained looked perfectly plausible.
+What makes this hard to catch is a missing denominator. A line that reads
+`107 exceeds_rpo, 86 no_backup, 40 collector_error` gives the reader nothing to check the
+parts against, so a set of numbers summing to more resources than the cluster contains looks
+entirely plausible.
 
-The fix has two halves. Count resources rather than rows, folding each resource's streams
-into its worst status, so a cluster in trouble is counted once. And print the total:
+Both halves matter in the fix. Count resources rather than rows, folding each resource's
+streams into its worst status so a cluster in trouble is counted once. And print the total:
 
 ```
 4 resources: 2 healthy, 1 exceeds_rpo, 1 collector_error
 ```
 
-The table still lists every stream, so nothing is hidden. Only the tally is deduplicated.
+The table still lists every stream, so nothing is hidden. Only the tally is deduplicated. A
+summary line is a claim about the world, and a claim without a denominator cannot be checked
+by the person reading it.
 
-The general point is that a summary line is a claim about the world, and a claim without a
-denominator cannot be checked by the person reading it. If I had printed the total on day
-one, the double-count would have been obvious the first time I ran it.
+## Name things after the object to go open
 
-## Naming that points at the thing to go fix
+Consider a row that says stream `logical`, status `collector_error (cronjob_not_found)`.
+Accurate, and not actionable unless you already know that CNPG's logical backup is taken by a
+Kubernetes CronJob and that WAL archiving is handled by the barman-cloud plugin declared in
+the Cluster CR. Without that, you know something is broken but not what object to open.
 
-An early version of the table produced rows like this:
-
-```
-demo   demo-pgsql   cnpg_cluster   logical   none   collector_error (cronjob_not_found)
-```
-
-Everything there is accurate. It is still not actionable unless you already know that CNPG's
-logical backup is taken by a Kubernetes CronJob, and that WAL archiving is handled by the
-barman-cloud plugin declared in the Cluster CR. Without that context you know something is
-broken but not what object to open.
-
-The exporter reports the stream, and for Velero it also reports the backup method
-(`PodVolumeBackup`, `CSISnapshot`). For CNPG it reports no method at all, because from its
-point of view there is nothing to report.
-
-The split that made the table useful was to treat those as two different questions. `STREAM`
+Two different questions are hiding in one column, so the table asks them separately. `STREAM`
 answers what is being backed up: `logical`, `wal`, `volume`. `METHOD` answers what takes it:
-`CronJob`, `Barman`, `PodVolumeBackup`, `CSISnapshot`. For CNPG the method is derived from
-the stream, since the mapping is fixed. A method the exporter does report always wins over
-the derived one, so this never overrides real data.
+`CronJob`, `Barman`, `PodVolumeBackup`, `CSISnapshot`.
 
-Now a failing row names the object to go look at.
+Velero reports its own method. CNPG reports none, because from its point of view there is
+nothing to report, so the method is derived from the stream where that mapping is fixed. A
+method the exporter does report always wins over the derived one, so this never overrides real
+data, and an unrecognised stream gets no method rather than a guess.
 
-The other readability fix was durations. Kubernetes' `HumanDuration` renders anything under
-three hours as raw minutes, so a backup taken just under three hours ago showed as `177m`.
-Nobody reads that as a clock. Ages now render as `2h 57m` and `3d 2h`.
+## Formats people can read at a glance
+
+Kubernetes' `HumanDuration` renders anything under three hours as raw minutes, so a backup
+taken just under three hours ago reads `177m`. Nobody parses that as a clock. Ages here render
+as `2h 57m` and `3d 2h`.
+
+`LATEST AGE` also distinguishes two things that both look like nothing. `none` means the
+exporter published an age of exactly zero, the shared sentinel for "no backup exists". A dash
+means no series was published at all, so there is nothing to measure yet. Collapsing those
+into one symbol hides a real difference between a backup that is missing and a check that has
+not run.
 
 ## What it looks like
 
@@ -175,62 +148,50 @@ monitoring   prom-data      pvc            volume    CSISnapshot       14h 57m  
 4 resources: 2 healthy, 1 exceeds_rpo, 1 collector_error
 ```
 
-A few choices worth naming.
+The table is plain aligned columns rather than a bordered box, because a box breaks `grep`.
+Every row carries its namespace, so `backup status | grep -v healthy` leaves each failing row
+complete and actionable, which matters more than the border does.
 
-The table is plain aligned columns rather than a bordered box. An earlier version drew a
-rounded border with dividers grouping each resource's streams, and it looked good. It also
-broke `grep`. Since every row carries its namespace, `backup status | grep -v healthy` leaves
-each failing row complete and actionable, which matters more than the border.
+Operator errors print above the table because they change how much you should trust everything
+below. If Velero cannot list its bucket, every Velero row underneath it is a guess.
 
-`LATEST AGE` distinguishes two things that both look like nothing. `none` means the exporter
-published an age of exactly zero, which is the shared sentinel for "no backup exists". A dash
-means no series was published at all, so there is nothing to measure yet. Collapsing those
-two into one symbol would hide a real difference.
+The command exits `0` whenever it can produce a report, however bad the news is. A non-zero
+exit means the fetch itself failed. This is a report rather than a health gate, and wiring an
+unhealthy status into an exit code sounds appealing right up until a pipeline starts failing
+on a backup everyone already knew was missing.
 
-Operator errors print above the table because they change how much you should trust
-everything below. If Velero cannot list its bucket, every Velero row underneath is a guess.
+## What surfaces once you can see it
 
-The command exits `0` whenever it can produce a report, however bad the news is. Non-zero
-means the fetch itself failed. It is a report, not a health gate. Wiring an unhealthy status
-into an exit code sounds appealing until a pipeline starts failing on a backup that was known
-to be missing.
+Running this against real clusters turns up the kind of thing that hides well in metrics
+nobody queries. A CNPG collector with no S3 credentials configured, falling back to instance
+metadata and timing out on every check. Databases with no logical backup CronJob deployed at
+all.
 
-## What it actually found
-
-The first honest run across real clusters was not comfortable reading.
-
-One cluster had no S3 credentials configured for the CNPG collector at all, so it was falling
-back to instance metadata and timing out on every check. It had been doing that silently for
-a while. The metrics existed the whole time. Nothing surfaced them in a form anyone read.
-
-Others had databases with no logical backup CronJob deployed, which is exactly the class of
-problem you find out about at the worst possible moment.
-
-None of this was caused by the new command. All of it was already true. The difference is
-that it now takes one command and ten seconds to see, instead of a metrics query nobody was
-going to run.
+None of that is created by a reporting command. It is already true. The difference is that
+seeing it costs one command and ten seconds instead of a metrics query nobody was going to
+run.
 
 ## The honest caveat
 
-The title of this post overclaims slightly, so let me correct it.
+The title overclaims, so let me correct it.
 
 This tells you a backup exists and how old it is. It does not tell you the backup restores.
-Those are genuinely different questions, and the second one is harder, because answering it
-properly means standing up the data somewhere and checking it came back intact.
+Those are different questions, and the second is harder, because answering it properly means
+standing the data up somewhere and checking it came back intact.
 
-Freshness verification is the floor, not the ceiling. It is worth building first because a
-backup that is missing or three days stale fails the restore test too, and this catches that
+Freshness verification is the floor rather than the ceiling. It is worth building first
+because anything missing or three days stale fails the restore test too, and this catches that
 class immediately and cheaply. Restore verification is the next piece of work.
 
 ## Takeaways
 
-- Put the reconciliation logic next to the domain knowledge. A CLI that reimplements the
-  rules will drift from the exporter that owns them.
+- Put reconciliation logic next to the domain knowledge. A CLI that reimplements the rules
+  will drift from the exporter that owns them.
 - Summary lines need denominators. Without a total, wrong arithmetic looks reasonable.
 - When an error is ambiguous between two layers, test the layers separately. A 404 from an L7
   proxy is indistinguishable from a 404 from your application.
 - Name things after the object someone has to go open. `CronJob` and `Barman` tell you where
-  to look. `logical` and `wal` do not.
+  to look; `logical` and `wal` do not.
 - Verification that is not one command does not happen.
 
 `kubeaid-cli backup status` shipped in v0.31.0. The CLI is at
