@@ -2,105 +2,106 @@
 title: "You Sure Your Backup Works? We Do, @Obmondo"
 date: 2026-07-23T08:30:00+05:30
 draft: false
-tags: ["kubernetes", "backup", "cnpg", "postgresql", "velero", "prometheus", "go", "cli", "netbird", "sre", "kubeaid"]
+tags: ["kubernetes", "backup", "cnpg", "postgresql", "velero", "prometheus", "disaster-recovery", "cli", "sre", "kubeaid"]
 author: "Ashish Jaiswal"
-summary: "kubeaid-cli backup status reports CNPG and Velero backup health in one command. The design rationale behind it, and three traps worth knowing if you build something similar: double-counted summaries, stream naming, and duration formatting."
+summary: "Backup in Kubernetes is four or five different mechanisms that each report success differently. Here is how a read-only in-cluster exporter plus one CLI command gives you a single answer for the whole cluster, including the volumes nobody ever set up a backup for."
 showToc: true
 TocOpen: true
 ---
 
-Everyone running Kubernetes in production has backups. Far fewer can tell you, right now,
-without opening Grafana, whether last night's backup actually ran for every database and
-every volume they care about.
+Ask anyone running a Kubernetes cluster whether their backups work and you will get a
+confident yes. Ask them to prove it for every database and every volume in the cluster,
+right now, and the confidence usually turns into a Grafana tab and some scrolling.
 
-The data usually exists. An in-cluster exporter watches CNPG clusters and Velero volume
-backups and publishes Prometheus gauges: latest backup age, oldest backup age, maximum
-interval between backups, per resource. That is good enough to alert on and close to useless
-when you want an answer in ten seconds.
+That gap is not carelessness. It is a direct consequence of how backup works in Kubernetes.
 
-Getting that answer by hand means knowing the metric names, running three or four queries,
-and mentally joining gauges per resource to decide whether a given database is protected.
-Nobody does that on a Tuesday afternoon, so it doesn't get checked.
+## Backup in Kubernetes is not one thing
 
-`kubeaid-cli backup status` makes it one command. What follows is why it is built the way it
-is, and three traps in this problem space that are worth knowing before you hit them.
+There is no single backup system in a Kubernetes cluster. There are usually four or five,
+each covering a different layer, installed at a different time, by different people.
 
-## Put the verdict where the domain knowledge lives
+**Velero** handles cluster and namespace level backup, including volumes. It copies PVC data
+to object storage either by streaming the filesystem (`PodVolumeBackup`, using restic or
+kopia) or by asking the storage layer for a snapshot (`CSISnapshot`). It writes to an
+S3-compatible bucket and tracks its own work in its own custom resources.
 
-The rules for "is this resource backed up" belong next to the code that knows how CNPG and
-Velero actually behave. There is exactly one copy of that knowledge, and it is the exporter.
+**Database operators** back up their own databases, on their own terms. CloudNativePG, for
+example, has two entirely separate mechanisms running at once: continuous WAL archiving
+through the barman-cloud plugin, and periodic logical dumps run by a Kubernetes CronJob.
+Those two can and do fail independently. WAL archiving can be healthy while logical dumps
+have not run in a week.
 
-So the exporter serves `GET /api/v1/backups`, which does the gauge join itself and returns one
-evaluated status per resource. The CLI finds the exporter's Service by label, fetches over
-`pods/portforward` with client-go, adjusts ages, and prints. Port-forward rather than the API
-server's service proxy because it is the transport that survives an L7 proxy sitting in front
-of kube-apiserver, which is how managed clusters are commonly reached. Roughly 350 lines of
-grouping and RPO comparison stay in one place instead of being reimplemented client-side,
-where they would drift from the exporter that owns them the first time either changed.
+**Your own CronJobs** back up the things nothing else covers. Somebody wrote a `pg_dump` to a
+bucket, it works, and it has been running unattended since.
 
-One subtlety leaks into the API contract regardless. The exporter measures ages at collection
-time, not at request time, and reports when each collector last ran. A consumer has to add the
-elapsed time since collection or it will under-report every age by however stale the collector
-is. A twelve-hour-old backup read through a three-hour-old collection looks nine hours old,
-which is well inside most RPOs. That is why the report leads with a freshness line rather than
-burying it.
+**The storage layer** may be taking volume snapshots underneath all of it, on a schedule
+configured in a completely different system.
 
-## A summary line needs a denominator
+Each of these reports success in its own dialect. Velero has custom resources. The operator
+has a status field. The CronJob has a Job exit code, if anyone is looking. None of them know
+about each other, and none of them can tell you the one thing you actually want to know:
+is everything in this cluster backed up, and how recently.
 
-A CNPG cluster does not produce one row in a backup report. It produces two, because it has
-two independent backup streams: a logical dump and a WAL archive. They fail independently and
-both matter, so both get a row.
+The failure mode this produces is not a backup that errors loudly. It is a database or a
+volume that quietly has no backup configured at all. Nothing errors, because nothing is
+running. There is no alert for a job that does not exist.
 
-That makes the obvious summary implementation wrong. Tally the rows by status, and a cluster
-with no logical backup and a broken WAL check is counted once under `no_backup` and again
-under `collector_error`. Every resource with multiple unhealthy streams inflates the totals
-once per stream.
+## What we deploy: a backup exporter
 
-What makes this hard to catch is a missing denominator. A line that reads
-`107 exceeds_rpo, 86 no_backup, 40 collector_error` gives the reader nothing to check the
-parts against, so a set of numbers summing to more resources than the cluster contains looks
-entirely plausible.
+The answer we settled on is a small exporter that runs inside the cluster and does the
+cross-referencing that nobody else does.
 
-Both halves matter in the fix. Count resources rather than rows, folding each resource's
-streams into its worst status so a cluster in trouble is counted once. And print the total:
+It is a Deployment, installed by a Helm chart, that runs on a schedule and needs two things:
+
+- **Read-only access to the cluster.** It lists PVCs, CNPG clusters, CronJobs and the
+  operators' own resources. It never writes anything.
+- **Read access to your backup bucket.** The same S3-compatible storage your backups already
+  land in. Read only, and it only ever lists and reads metadata objects.
+
+Everything stays local. The exporter runs in your cluster, reads your bucket, and publishes
+its findings as Prometheus metrics on your monitoring stack. Nothing is sent anywhere else,
+and there is no external service to sign up for.
+
+## Why the exporter is smarter than reading a status field
+
+The straightforward way to build this would be to read what each backup tool says about
+itself: ask Velero if its last backup succeeded, ask the operator if its last dump was fine.
+That approach cannot answer the question that actually matters.
+
+The exporter does three things differently.
+
+**It verifies the artifact, not the report.** For Velero it walks the backup directories in
+S3, reads the volume metadata each backup writes, and checks the per-volume result. A backup
+job that reported success but produced nothing for a given PVC does not pass. The evidence is
+the object in the bucket, not a status field.
+
+**It finds what was never backed up.** This is the important one. The exporter lists PVCs
+from the cluster and backups from the bucket, then merges them. A PVC that appears in the
+cluster and nowhere in the bucket is reported explicitly as having no backup. A tool that
+only reads backup records is structurally incapable of telling you this, because the thing
+you need to know about left no record anywhere. If you want a volume deliberately excluded,
+you label it, and the exporter respects that.
+
+**It understands that one resource can have several backup streams.** A CNPG cluster is
+tracked as both its logical dump and its WAL archive, evaluated separately, because they fail
+separately and you need to know which one broke.
+
+On top of that it evaluates ages against a configurable RPO rather than handing you raw
+numbers, so the output is a verdict rather than a spreadsheet. Collector-level problems are
+reported separately from resource-level ones, so if the exporter cannot reach the bucket at
+all you are told that plainly instead of being shown a screen of misleading greens.
+
+## Your go-to command: `kubeaid-cli backup status`
+
+The metrics are there for alerting. For the human question, there is one command:
 
 ```
-4 resources: 2 healthy, 1 exceeds_rpo, 1 collector_error
+kubeaid-cli backup status
 ```
 
-The table still lists every stream, so nothing is hidden. Only the tally is deduplicated. A
-summary line is a claim about the world, and a claim without a denominator cannot be checked
-by the person reading it.
-
-## Name things after the object to go open
-
-Consider a row that says stream `logical`, status `collector_error (cronjob_not_found)`.
-Accurate, and not actionable unless you already know that CNPG's logical backup is taken by a
-Kubernetes CronJob and that WAL archiving is handled by the barman-cloud plugin declared in
-the Cluster CR. Without that, you know something is broken but not what object to open.
-
-Two different questions are hiding in one column, so the table asks them separately. `STREAM`
-answers what is being backed up: `logical`, `wal`, `volume`. `METHOD` answers what takes it:
-`CronJob`, `Barman`, `PodVolumeBackup`, `CSISnapshot`.
-
-Velero reports its own method. CNPG reports none, because from its point of view there is
-nothing to report, so the method is derived from the stream where that mapping is fixed. A
-method the exporter does report always wins over the derived one, so this never overrides real
-data, and an unrecognised stream gets no method rather than a guess.
-
-## Formats people can read at a glance
-
-Kubernetes' `HumanDuration` renders anything under three hours as raw minutes, so a backup
-taken just under three hours ago reads `177m`. Nobody parses that as a clock. Ages here render
-as `2h 57m` and `3d 2h`.
-
-`LATEST AGE` also distinguishes two things that both look like nothing. `none` means the
-exporter published an age of exactly zero, the shared sentinel for "no backup exists". A dash
-means no series was published at all, so there is nothing to measure yet. Collapsing those
-into one symbol hides a real difference between a backup that is missing and a check that has
-not run.
-
-## What it looks like
+It uses your current kubeconfig, exactly like kubectl. If `kubectl get svc` works against a
+cluster, this works. It finds the exporter itself, so there is nothing to configure and no
+namespace or endpoint to pass.
 
 ```
 collected 2h 57m ago: cnpg | velero
@@ -117,51 +118,74 @@ monitoring   prom-data      pvc            volume    CSISnapshot       14h 57m  
 4 resources: 2 healthy, 1 exceeds_rpo, 1 collector_error
 ```
 
-The table is plain aligned columns rather than a bordered box, because a box breaks `grep`.
-Every row carries its namespace, so `backup status | grep -v healthy` leaves each failing row
-complete and actionable, which matters more than the border does.
+Reading it top to bottom:
 
-Operator errors print above the table because they change how much you should trust everything
-below. If Velero cannot list its bucket, every Velero row underneath it is a guess.
+The **first line** tells you how fresh the answer is. Backup checks run on a schedule, so
+knowing the data is three hours old matters as much as the data itself.
 
-The command exits `0` whenever it can produce a report, however bad the news is. A non-zero
-exit means the fetch itself failed. This is a report rather than a health gate, and wiring an
-unhealthy status into an exit code sounds appealing right up until a pipeline starts failing
-on a backup everyone already knew was missing.
+**Operator errors** come before the table because they change how much you should trust it.
+If the exporter cannot list the bucket, every row below it is a guess.
 
-## What surfaces once you can see it
+**`STREAM` and `METHOD`** together tell you what broke and what to go open. `STREAM` is what
+is being backed up: `logical`, `wal`, `volume`. `METHOD` is the mechanism doing it: `CronJob`,
+`Barman`, `PodVolumeBackup`, `CSISnapshot`. In the first row above, the logical dump for
+`demo-pgsql` is failing and the method is `CronJob`, so you know to go look for a missing
+CronJob rather than at Postgres.
 
-Running this against real clusters turns up the kind of thing that hides well in metrics
-nobody queries. A CNPG collector with no S3 credentials configured, falling back to instance
-metadata and timing out on every check. Databases with no logical backup CronJob deployed at
-all.
+**`LATEST AGE`** is how old the newest usable backup is. `none` means there is no backup at
+all, which is different from a dash, meaning the check has not produced a measurement yet.
 
-None of that is created by a reporting command. It is already true. The difference is that
-seeing it costs one command and ten seconds instead of a metrics query nobody was going to
-run.
+**`STATUS`** is the verdict: `healthy`, `exceeds_rpo` (a backup exists but is older than your
+RPO), `no_backup` (nothing exists), `collector_error` (the check itself failed, with the
+reason in brackets), or `unknown`.
 
-## The honest caveat
+The **last line** counts resources rather than rows, so a database with two streams counts
+once, under whichever of its streams is in the worst shape.
 
-The title overclaims, so let me correct it.
+Every row carries its namespace, so the output pipes into anything:
 
-This tells you a backup exists and how old it is. It does not tell you the backup restores.
-Those are different questions, and the second is harder, because answering it properly means
-standing the data up somewhere and checking it came back intact.
+```
+kubeaid-cli backup status | grep -v healthy
+```
 
-Freshness verification is the floor rather than the ceiling. It is worth building first
-because anything missing or three days stale fails the restore test too, and this catches that
-class immediately and cheaply. Restore verification is the next piece of work.
+leaves you with exactly the rows that need attention, each one complete. There is also
+`-o json` if you would rather feed it into something else.
 
-## Takeaways
+The command exits `0` whenever it can produce a report, however bad the report is. A non-zero
+exit means it could not reach the exporter. It is a report rather than a health gate, so
+dropping it into a pipeline will not start failing builds over a backup you already knew was
+missing.
 
-- Put reconciliation logic next to the domain knowledge. A CLI that reimplements the rules
-  will drift from the exporter that owns them.
-- Summary lines need denominators. Without a total, wrong arithmetic looks reasonable.
-- Name things after the object someone has to go open. `CronJob` and `Barman` tell you where
-  to look; `logical` and `wal` do not.
-- Verification that is not one command does not happen.
+## What this catches
 
-`kubeaid-cli backup status` shipped in v0.31.0. The CLI is at
-[github.com/Obmondo/kubeaid-cli](https://github.com/Obmondo/kubeaid-cli), and the exporter it
-talks to is at
-[github.com/Obmondo/backup-exporter](https://github.com/Obmondo/backup-exporter).
+The things that turn up are rarely dramatic failures. They are gaps.
+
+A database with no logical backup CronJob deployed at all, so nothing has ever run and
+nothing has ever alerted. A collector quietly timing out because its storage credentials were
+never configured, meaning nobody has actually checked that bucket in months. A volume added
+during a migration that nobody added to the backup schedule.
+
+None of these announce themselves. All of them are visible in ten seconds once something
+cross-references what exists against what has been backed up.
+
+## What this does not tell you
+
+Being straight about the limits, because the title of this post is a boast.
+
+This tells you a backup exists and how recent it is. It does not tell you the backup
+restores. Those are different questions, and the second one is harder, because answering it
+honestly means standing the data up somewhere and checking it came back intact.
+
+Freshness is the floor. It is worth having first, because anything missing or three days
+stale fails a restore test too, and this catches that class immediately and for free. Restore
+verification is the next piece of work.
+
+## Getting started
+
+The exporter is at
+[github.com/Obmondo/backup-exporter](https://github.com/Obmondo/backup-exporter) and installs
+via its Helm chart. Point it at your backup bucket with read-only credentials.
+
+`backup status` ships in `kubeaid-cli` v0.31.0,
+[github.com/Obmondo/kubeaid-cli](https://github.com/Obmondo/kubeaid-cli). Once the exporter is
+running, the command needs no configuration at all.
