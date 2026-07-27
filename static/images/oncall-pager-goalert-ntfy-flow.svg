@@ -3,7 +3,7 @@
     <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#475569"/></marker>
   </defs>
   <rect x="0" y="0" width="1200" height="800" fill="#ffffff"/>
-  <text x="600" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#1e293b">On-call paging: the alert router bridges GoAlert and ntfy, ack = chat emoji</text>
+  <text x="600" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#1e293b">Obmondo on-call paging: Opsmondo bridges GoAlert and ntfy, ack = chat emoji</text>
 
   <!-- alertmanagers -->
   <rect x="60" y="64" width="230" height="56" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
@@ -15,8 +15,8 @@
 
   <!-- alert router -->
   <rect x="190" y="180" width="250" height="62" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-  <text x="315" y="206" text-anchor="middle" font-size="16" font-weight="700" fill="#1e293b">Alert router</text>
-  <text x="315" y="226" text-anchor="middle" font-size="13" fill="#475569">ingest + group alerts</text>
+  <text x="315" y="206" text-anchor="middle" font-size="16" font-weight="700" fill="#1e293b">Opsmondo</text>
+  <text x="315" y="226" text-anchor="middle" font-size="13" fill="#475569">alert engine: ingest + group</text>
 
   <!-- mattermost -->
   <rect x="880" y="180" width="260" height="62" rx="10" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
@@ -90,11 +90,11 @@
   <!-- step 6: mattermost -> router (poll arc) -->
   <path d="M1010,178 C 900,88 560,88 444,176" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
   <text x="722" y="100" text-anchor="middle" font-size="13" font-weight="700" fill="#dc2626">step 6</text>
-  <text x="722" y="118" text-anchor="middle" font-size="13" fill="#475569">alert router polls the thread for the ack (every 30s)</text>
+  <text x="722" y="118" text-anchor="middle" font-size="13" fill="#475569">Opsmondo polls the thread for the ack (every 30s)</text>
 
   <!-- step 7: router -> goalert (ack) -->
   <path d="M188,225 C 110,255 110,325 186,355" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#ah)"/>
   <text x="92" y="272" text-anchor="middle" font-size="13" font-weight="700" fill="#dc2626">step 7</text>
   <text x="92" y="290" text-anchor="middle" font-size="13" fill="#475569">ack the alert</text>
-  <text x="92" y="308" text-anchor="middle" font-size="13" fill="#475569">(updateAlerts)</text>
+  <text x="92" y="308" text-anchor="middle" font-size="13" fill="#475569">(GoAlert API)</text>
 </svg>
